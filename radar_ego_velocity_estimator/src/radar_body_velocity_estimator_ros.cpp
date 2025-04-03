@@ -32,15 +32,18 @@ RadarBodyVelocityEstimatorRos::RadarBodyVelocityEstimatorRos(ros::NodeHandle nh)
 {
   reconfigure_server_.setCallback(boost::bind(&RadarBodyVelocityEstimatorRos::reconfigureCallback, this, _1, _2));
 
+  // step: gyro初始化时间
   gyro_init_s_ = 1.0;
   getRosParameter(nh, kPrefix, RosParameterType::Recommended, "gyro_init_s", gyro_init_s_);
 
+  // step: 是否需要trigger
   run_without_trigger = false;
   getRosParameter(nh, kPrefix, RosParameterType::Recommended, "run_without_trigger", run_without_trigger);
 
   if (run_without_trigger)
     ROS_WARN_STREAM(kPrefix << "Running without radar trigger");
 
+  // step: 话题名参数
   std::string topic_twist = "twist_body";
   getRosParameter(nh, kPrefix, RosParameterType::Recommended, "topic_twist", topic_twist);
 
@@ -71,6 +74,7 @@ void RadarBodyVelocityEstimatorRos::runFromRosbag(const std::string& rosbag_path
                                                   const double bag_duration,
                                                   const double sleep_ms)
 {
+  // step: 1 打开bag并准备话题列表
   rosbag::Bag source_bag;
   source_bag.open(rosbag_path, rosbag::bagmode::Read);
   std::vector<std::string> topics;
@@ -79,33 +83,38 @@ void RadarBodyVelocityEstimatorRos::runFromRosbag(const std::string& rosbag_path
   topics.push_back(sub_radar_trigger_.getTopic());
   topics.push_back(pub_twist_ground_truth_.getTopic());
 
+  // step: 2 遍历view中的话题数据
   rosbag::View view(source_bag, rosbag::TopicQuery(topics));
-
   auto first_timestamp = ros::TIME_MIN;
-
   for (const rosbag::MessageInstance& m : view)
   {
+    // step: 2.1 ros系统正常运行
     if (!ros::ok())
       break;
 
+    // step: 2.2 更新第一帧数据的时间戳
     if (first_timestamp == ros::TIME_MIN)
       first_timestamp = m.getTime();
 
+    // step: 2.3 判断当前数据时间戳是否正常
     if ((m.getTime() - first_timestamp).toSec() < bag_start)
       continue;
 
     if ((m.getTime() - first_timestamp).toSec() > bag_duration)
       break;
 
+    // step: 2.4 处理当前话题数据
     const auto topic = m.getTopic();
     if (topic == sub_imu_.getTopic())
     {
+      // step: IMU数据
       const auto imu_msg = m.instantiate<sensor_msgs::Imu>();
       if (imu_msg != NULL)
         callbackImu(imu_msg);
     }
     else if (topic == sub_radar_scan_.getTopic())
     {
+      // step: RADAR数据
       const auto radar_scan = m.instantiate<sensor_msgs::PointCloud2>();
       if (radar_scan != NULL)
       {
@@ -116,12 +125,14 @@ void RadarBodyVelocityEstimatorRos::runFromRosbag(const std::string& rosbag_path
     }
     else if (topic == sub_radar_trigger_.getTopic())
     {
+      // step: trigger数据
       const auto radar_trigger_msg = m.instantiate<std_msgs::Header>();
       if (radar_trigger_msg != NULL)
         callbackRadarTrigger(radar_trigger_msg);
     }
     else if (topic == pub_twist_ground_truth_.getTopic())
     {
+      // step: twist真值数据
       const auto msg = m.instantiate<geometry_msgs::TwistStamped>();
       if (msg)
         pub_twist_ground_truth_.publish(msg);
@@ -142,8 +153,10 @@ void RadarBodyVelocityEstimatorRos::processRadarData(const sensor_msgs::PointClo
   Vector3 v_b_r;
   Matrix3 P_v_b_r;
   profiler.start("ego_velocity_estimation");
+  // step: 1 调用 rbve 估计器
   if (estimator_.estimate(radar_scan, w_b, v_b_r, P_v_b_r))
   {
+    // step: 1.1 调用成功，发布估计的速度消息
     profiler.stop("ego_velocity_estimation");
 
     geometry_msgs::TwistWithCovarianceStamped msg;
@@ -163,6 +176,7 @@ void RadarBodyVelocityEstimatorRos::processRadarData(const sensor_msgs::PointClo
   }
   else
   {
+    // step: 1.2 估计失败
     profiler.stop("ego_velocity_estimation");
     ROS_ERROR_STREAM(kPrefix << "Radar ego velocity estimation failed");
   }
@@ -174,17 +188,25 @@ void RadarBodyVelocityEstimatorRos::processRadarData(const sensor_msgs::PointClo
 }
 
 void RadarBodyVelocityEstimatorRos::callbackImu(const sensor_msgs::ImuConstPtr& imu_msg)
-
 {
   mutex_.lock();
-  w_b_imu       = Vector3(imu_msg->angular_velocity.x, imu_msg->angular_velocity.y, imu_msg->angular_velocity.z);
+
+  // step: 1 角速度
+  // note: deg -> rad
+  // w_b_imu       = Vector3(imu_msg->angular_velocity.x, imu_msg->angular_velocity.y, imu_msg->angular_velocity.z);
+  w_b_imu       = Vector3(imu_msg->angular_velocity.x * M_PI / 180.0,
+                    imu_msg->angular_velocity.y * M_PI / 180.0,
+                    imu_msg->angular_velocity.z * M_PI / 180.0);
   stamp_w_b_imu = imu_msg->header.stamp;
 
+  // step: 2 gyro偏置初始化
   if (!gyro_offset_initialized_)
   {
+    // step: 2.1 gyro标定开始时间记录
     if (gyro_calib_start_ == ros::TIME_MIN)
       gyro_calib_start_ = imu_msg->header.stamp;
 
+    // step: 2.2 gyro标定数据取均值作为角速度偏置
     if ((imu_msg->header.stamp - gyro_calib_start_).toSec() < gyro_init_s_)
     {
       gyro_calib.emplace_back(w_b_imu);
@@ -206,30 +228,42 @@ void RadarBodyVelocityEstimatorRos::callbackRadarScan(const sensor_msgs::PointCl
 {
   mutex_.lock();
 
-  if (gyro_offset_initialized_)
+  if (0)
   {
-    if (run_without_trigger)
-    {
-      // no trigger available --> use most recent omege measurement
-      // catch bug of ti_mmwave driver --> time stamp is 0 :(
-      if (radar_scan_msg->header.stamp.sec == 0)
-      {
-        ROS_WARN_THROTTLE(1.0, "Time stamp of radar scan pcl is 0 using most recent IMU data as timestamp!");
-        processRadarData(*radar_scan_msg, w_b_imu, stamp_w_b_imu);
-      }
-      else
-      {
-        processRadarData(*radar_scan_msg, w_b_imu, radar_scan_msg->header.stamp);
-      }
-    }
-    else
-    {
-      if (trigger_stamp > ros::TIME_MIN)
-        processRadarData(*radar_scan_msg, w_b_radar, trigger_stamp);
-      else
-        ROS_ERROR_STREAM(kPrefix << "Unable to process radar scan, no trigger message received!");
-      trigger_stamp = ros::TIME_MIN;
-    }
+    // if (gyro_offset_initialized_)
+    // {
+    //   // step: 1 是否需要trigger
+    //   if (run_without_trigger)
+    //   {
+    //     // no trigger available --> use most recent omege measurement
+    //     // note: catch bug of ti_mmwave driver --> time stamp is 0 :(
+    //     if (radar_scan_msg->header.stamp.sec == 0)
+    //     {
+    //       ROS_WARN_THROTTLE(1.0, "Time stamp of radar scan pcl is 0 using most recent IMU data as timestamp!");
+    //       processRadarData(*radar_scan_msg, w_b_imu, stamp_w_b_imu);
+    //     }
+    //     else
+    //     {
+    //       processRadarData(*radar_scan_msg, w_b_imu, radar_scan_msg->header.stamp);
+    //     }
+    //   }
+    //   else
+    //   {
+    //     // step: 有trigger信号则处理雷达数据
+    //     if (trigger_stamp > ros::TIME_MIN)
+    //       processRadarData(*radar_scan_msg, w_b_radar, trigger_stamp);
+    //     else
+    //       ROS_ERROR_STREAM(kPrefix << "Unable to process radar scan, no trigger message received!");
+
+    //     // step: 重置trigger时间
+    //     trigger_stamp = ros::TIME_MIN;
+    //   }
+    // }
+  }
+  else
+  {
+    std::cout << "RADAR CBK" << std::endl;
+    processRadarData(*radar_scan_msg, w_b_imu, radar_scan_msg->header.stamp);
   }
 
   mutex_.unlock();
@@ -238,6 +272,7 @@ void RadarBodyVelocityEstimatorRos::callbackRadarScan(const sensor_msgs::PointCl
 void RadarBodyVelocityEstimatorRos::callbackRadarTrigger(const std_msgs::HeaderConstPtr& trigger_msg)
 {
   mutex_.lock();
+  // step: 补偿角速度偏置
   w_b_radar     = w_b_imu - offset_gyro;
   trigger_stamp = trigger_msg->stamp;
   mutex_.unlock();

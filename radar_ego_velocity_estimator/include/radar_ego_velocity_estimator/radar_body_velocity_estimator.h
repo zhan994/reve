@@ -29,6 +29,7 @@ namespace reve
 /**
  * @brief The RadarBodyVelocityEstimator class
  */
+// api: rbve
 class RadarBodyVelocityEstimator
 {
 public:
@@ -48,12 +49,14 @@ public:
    * @param[out] P_v_b           estimated covariance matrix
    * @returns true if estimation successful
    */
+  // api: 核心接口， 估计本体速度
   bool estimate(const sensor_msgs::PointCloud2& radar_scan_msg, const Vector3& w_b, Vector3& v_b_r, Matrix3& P_v_b);
 
   /**
    * @brief Recofigure callback
    * @param[in/out] cfg  cfg has to contain the members of RadarEgoVelocityEstimatorConfig
    */
+  // api: rbve配置参数，直接给reve配置参数
   template <class ConfigContainingRadarEgoVelocityEstimatorConfig>
   void configure(ConfigContainingRadarEgoVelocityEstimatorConfig& cfg)
   {
@@ -63,8 +66,8 @@ public:
 private:
   const std::string kPrefix = "[RadarBodyVelocityEstimator]: ";
 
-  RadarEgoVelocityEstimator radar_ego_velocity_estimator_;
-  Isometry T_b_r_;
+  RadarEgoVelocityEstimator radar_ego_velocity_estimator_;  // rever估计器
+  Isometry T_b_r_;                                          // 外参
 };
 
 }  // namespace reve

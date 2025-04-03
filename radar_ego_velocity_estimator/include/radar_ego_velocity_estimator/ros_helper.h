@@ -20,6 +20,7 @@
 
 namespace reve
 {
+// 参数类型
 enum class RosParameterType
 {
   Required,
@@ -27,6 +28,18 @@ enum class RosParameterType
   Optional
 };
 
+/**
+ * \brief // api: 获取参数
+ *
+ * \tparam T
+ * \param nh
+ * \param kPrefix
+ * \param param_type
+ * \param param_name
+ * \param param
+ * \return true
+ * \return false
+ */
 template <typename T>
 static bool getRosParameter(const ros::NodeHandle& nh,
                             const std::string kPrefix,

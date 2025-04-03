@@ -47,6 +47,7 @@ class VelocityEstimationEvaluator:
             self.last_sub_walltime = time.time()
 
     def analyze(self):
+        print("vel vs. vel_gt size: ", len(self.list_v_b), len(self.list_v_gt))
         v_body_raw = np.vstack(self.list_v_b)
 
         if len(self.list_v_gt) == 0:

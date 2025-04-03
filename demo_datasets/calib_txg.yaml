@@ -1,0 +1,24 @@
+## Topics
+topic_imu: "/imu"
+topic_radar_scan: "/radar_points"
+topic_radar_trigger: "/sensor_platform/radar/trigger"
+topic_ground_truth_pose: "/uav_pos"
+topic_ground_truth_twist_body: "/uav_vel_body"
+
+## Extrinsic calibration of body frame to radar frame
+# translation of radar frame expressed in body frame 
+l_b_r_x: 0.314
+l_b_r_y: 0.0
+l_b_r_z: 0.005
+
+# rotation radar frame to body frame
+q_b_r_w: 0.7064338 
+q_b_r_x: 0.7064338
+q_b_r_y: -0.0308436
+q_b_r_z: 0.0308436
+
+# length of each radar frame (="exposure time" of radar scan) in milliseconds
+radar_frame_ms: 18.5
+
+# nominal radar rate
+radar_rate: 10

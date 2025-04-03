@@ -52,5 +52,5 @@ build/
 
 # libroffice
 *.xlsx#
-
+.vscode/
 

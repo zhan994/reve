@@ -1,15 +1,12 @@
 <?xml version="1.0"?>
-<!--This file is part of REVE - Radar Ego Velocity Estimator-->
-<!--@author: Christopher Doer <christopher.doer@kit.edu>-->
-
 <launch>
   <arg name="mode"/>
   <!-- rosbag (postprocessing) or ros (live) -->
 
   <arg name="do_plot" default="True"/>
 
-  <arg name="config" default="params_demo_dataset"/>
-  <arg name="calibration" default="$(find radar_ego_velocity_estimator)/../demo_datasets/calib_rio"/>
+  <arg name="config" default="params_txg"/>
+  <arg name="calibration" default="$(find radar_ego_velocity_estimator)/../demo_datasets/calib_txg"/>
   <arg name="topic_twist" default="/radar_body_velocity_estimation_node/twist_body"/>
   <arg name="run_without_trigger" default="False"/>
   <arg name="use_odr" default="False"/>
@@ -38,7 +35,7 @@
     <rosparam file="$(arg calibration).yaml" command="load" ns=""/>
     <param name="topic_v" value="$(arg topic_twist)" type="string"/>
     <param name="velocity_type" value="Radar Body Velocity" type="string"/>
-    <param name="topic_v_gt" value="/ground_truth/twist_body" type="string"/>
+    <param name="topic_v_gt" value="uav_vel_body" type="string"/>
   </node>
 </launch>
 

@@ -28,6 +28,7 @@ void SimpleProfiler::start(const std::string& key)
 
 float SimpleProfiler::stopWithRuntimeMs(const std::string& key)
 {
+  // step: 正常停止，则返回当前统计的profile对应的耗时ms
   if (stop(key))
     return profile_data_[key].execution_ms.back();
   return 0.0;
@@ -35,21 +36,27 @@ float SimpleProfiler::stopWithRuntimeMs(const std::string& key)
 
 bool SimpleProfiler::stop(const std::string& key)
 {
+  // step: 1 检查是否开启
   if (!is_on_)
     return false;
 
+  // step: 2 计算耗时
   auto stop  = std::chrono::system_clock::now();
   auto start = start_times_[key];
   if (start.time_since_epoch().count() == 0)
   {
+    // step: 2.1 计时失败
     ROS_ERROR_STREAM(kPrefix << key << " is ended but has been started.");
     return false;
   }
   else
   {
+    // step: 2.2 统计耗时，并载入profile_data中
     const float ms = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count() / 1.0e6f;
     auto& elem     = profile_data_[key];
     elem.execution_ms.emplace_back(ms);
+
+    // step: 2.3 更新id
     if (elem.id == -1)
       elem.id = next_id_++;
   }
@@ -59,17 +66,19 @@ bool SimpleProfiler::stop(const std::string& key)
 
 RuntimeStatistics SimpleProfiler::getStatistics(const std::string& key)
 {
+  // step: 1 没有开启，则返回空的统计
   if (!is_on_)
     return RuntimeStatistics();
 
+  // step: 2 找对应key的profile_data
   auto data = profile_data_.find(key);
-
   if (data == profile_data_.end())
   {
     ROS_ERROR_STREAM(kPrefix << key << " has not been profiled.");
     return RuntimeStatistics();
   }
 
+  // step: 3 计算对应的统计数据并返回
   return calculateProfileStatistics(key);
 }
 
@@ -132,11 +141,12 @@ std::string SimpleProfiler::toMarkdownTable()
 
 RuntimeStatistics SimpleProfiler::calculateProfileStatistics(const std::string& key)
 {
+  // step: 1 没有开启，则返回空的统计
   if (!is_on_)
     return RuntimeStatistics();
 
+  // step: 2 找对应key的profile_data
   auto data = profile_data_.find(key);
-
   if (data == profile_data_.end())
   {
     ROS_ERROR_STREAM(kPrefix << key << " has not been profiled.");
@@ -144,6 +154,7 @@ RuntimeStatistics SimpleProfiler::calculateProfileStatistics(const std::string& 
   }
   else
   {
+    // step: 3 统计max，min，mean，total
     data->second.statistics.max_ms =
         *std::max_element(data->second.execution_ms.begin(), data->second.execution_ms.end());
     data->second.statistics.min_ms =
@@ -159,6 +170,7 @@ RuntimeStatistics SimpleProfiler::calculateProfileStatistics(const std::string& 
 
 float SimpleProfiler::getTotalRuntime()
 {
+  // step: 遍历所有的profile_data并累加耗时
   RuntimeStatistics overall;
   for (const auto& elem : profile_data_)
   {

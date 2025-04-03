@@ -27,7 +27,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(RadarPointCloudType,
                                   (float, snr_db, snr_db)
                                   (float, noise_db,   noise_db)
                                   (float, v_doppler_mps,   v_doppler_mps)
-                                  )
+                                )
 
 
 POINT_CLOUD_REGISTER_POINT_STRUCT (mmWaveCloudType,
@@ -35,22 +35,34 @@ POINT_CLOUD_REGISTER_POINT_STRUCT (mmWaveCloudType,
                                     (float, y, y)
                                     (float, z, z)
                                     (float, intensity, intensity)
-                                    (float, velocity, velocity))
+                                    (float, velocity, velocity)
+                                  )
+               
+                                    
+POINT_CLOUD_REGISTER_POINT_STRUCT (Radar4DPointType,
+                                    (float, v_doppler_mps, v_doppler_mps)
+                                    (float, snr_db, snr_db)
+                                    (float, rcs, rcs)
+                                    (float, range, range)
+                                    (float, azimuth, azimuth)
+                                    (float, elevation, elevation)
+                                  )
 // clang-format on
 
 bool reve::pcl2msgToPcl(const sensor_msgs::PointCloud2& pcl_msg, pcl::PointCloud<RadarPointCloudType>& scan)
 {
   // TODO: add support for ti_mmwave_rospkg clound type
 
+  // step: 1 统计当前消息中的所有fields
   std::set<std::string> fields;
   std::string fields_str = "";
-
   for (const auto& field : pcl_msg.fields)
   {
     fields.emplace(field.name);
     fields_str += field.name + ", ";
   }
 
+  // step: 2 判断消息类型 rio 或 ti_mmwave_rospkg
   if (fields.find("x") != fields.end() && fields.find("y") != fields.end() && fields.find("z") != fields.end() &&
       fields.find("snr_db") != fields.end() && fields.find("noise_db") != fields.end() &&
       fields.find("v_doppler_mps") != fields.end())
@@ -100,11 +112,45 @@ bool reve::pcl2msgToPcl(const sensor_msgs::PointCloud2& pcl_msg, pcl::PointCloud
 
 bool reve::pclToPcl2msg(pcl::PointCloud<RadarPointCloudType> scan, sensor_msgs::PointCloud2& pcl_msg)
 {
+  // step: 1 补全消息的数据
   scan.height = 1;
   scan.width  = scan.size();
 
+  // step: 2 PCL转ROS消息
   pcl::PCLPointCloud2 tmp;
   pcl::toPCLPointCloud2<RadarPointCloudType>(scan, tmp);
+  pcl_conversions::fromPCL(tmp, pcl_msg);
+
+  return true;
+}
+
+bool reve::pcl2msgToPcl(const sensor_msgs::PointCloud2& pcl_msg, pcl::PointCloud<TXGPointCloudType>& scan)
+{
+  // step: 1 统计当前消息中的所有fields
+  std::set<std::string> fields;
+  std::string fields_str = "";
+  for (const auto& field : pcl_msg.fields)
+  {
+    fields.emplace(field.name);
+    fields_str += field.name + ", ";
+  }
+
+  pcl::PCLPointCloud2 pcl_pc2;
+  pcl_conversions::toPCL(pcl_msg, pcl_pc2);
+  pcl::fromPCLPointCloud2(pcl_pc2, scan);
+
+  return true;
+}
+
+bool reve::pclToPcl2msg(pcl::PointCloud<TXGPointCloudType> scan, sensor_msgs::PointCloud2& pcl_msg)
+{
+  // step: 1 补全消息的数据
+  scan.height = 1;
+  scan.width  = scan.size();
+
+  // step: 2 PCL转ROS消息
+  pcl::PCLPointCloud2 tmp;
+  pcl::toPCLPointCloud2<TXGPointCloudType>(scan, tmp);
   pcl_conversions::fromPCL(tmp, pcl_msg);
 
   return true;

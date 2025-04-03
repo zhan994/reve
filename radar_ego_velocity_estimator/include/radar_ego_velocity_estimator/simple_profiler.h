@@ -28,6 +28,7 @@
 
 namespace reve
 {
+// api: 运行时间统计
 struct RuntimeStatistics
 {
   float min_ms   = 0.0f;
@@ -35,6 +36,7 @@ struct RuntimeStatistics
   float mean_ms  = 0.0f;
   float total_ms = 0.0f;
 
+  // api: 毫秒打印
   std::string toStringMs() const
   {
     std::stringstream ss;
@@ -43,6 +45,7 @@ struct RuntimeStatistics
     return ss.str();
   }
 
+  // api: 微秒打印
   std::string toStringUs() const
   {
     std::stringstream ss;
@@ -52,6 +55,7 @@ struct RuntimeStatistics
   }
 };
 
+// api: 运行时间数据封装
 struct ProfileData
 {
   int id = -1;
@@ -62,6 +66,7 @@ struct ProfileData
 /**
  * @brief The SimpleProfiler class provides a lighweight tool for runtime evaluation
  */
+// api: 轻量化的运行时间评估工具
 class SimpleProfiler
 {
 public:
@@ -116,10 +121,10 @@ private:
 
   const std::string kPrefix;
 
-  bool is_on_;
+  bool is_on_; 
   int next_id_;
-  std::map<std::string, std::chrono::system_clock::time_point> start_times_;
-  std::unordered_map<std::string, ProfileData> profile_data_;
+  std::map<std::string, std::chrono::system_clock::time_point> start_times_; // 记录开始时间
+  std::unordered_map<std::string, ProfileData> profile_data_; // 运行时间数据
 };
 
 }  // namespace reve

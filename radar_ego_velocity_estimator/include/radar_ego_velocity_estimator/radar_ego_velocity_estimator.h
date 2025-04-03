@@ -33,6 +33,7 @@
 
 namespace reve
 {
+// api: Vector11中的索引
 struct RadarEgoVelocityEstimatorIndices
 {
   uint azimuth   = 0;
@@ -48,6 +49,7 @@ struct RadarEgoVelocityEstimatorIndices
   uint noise_db  = 10;
 };
 
+// api: reve
 class RadarEgoVelocityEstimator
 {
 public:
@@ -60,6 +62,7 @@ public:
 
   /**
    * @brief Reconfigure callback
+   * // api: dyna config 回调， 配置估计器相关参数
    * @param config  has to contain RadarEgoVelocityEstimatorConfig
    * @return
    */
@@ -68,6 +71,7 @@ public:
 
   /**
    * @brief Estimates the radar ego velocity based on a single radar scan
+   * // api: 基于单帧雷达数据估计ego vel，sigma_v_r为协方差矩阵的对角线
    * @param[in] radar_scan_msg       radar scan
    * @param[out] v_r                 estimated radar ego velocity
    * @param[out] sigma_v_r           estimated sigmas of ego velocity
@@ -84,10 +88,18 @@ public:
                 Vector3& v_r,
                 Vector3& sigma_v_r,
                 sensor_msgs::PointCloud2& inlier_radar_msg);
+
+  // api: 核心reve估计接口，上面4个为封装接口
   bool estimate(const sensor_msgs::PointCloud2& radar_scan_msg,
                 Vector3& v_r,
                 Matrix3& P_v_r,
                 pcl::PointCloud<RadarPointCloudType>& inlier_radar,
+                const Matrix3& C_stab_r = Matrix3::Identity());
+
+  bool estimate(const sensor_msgs::PointCloud2& radar_scan_msg,
+                Vector3& v_r,
+                Matrix3& P_v_r,
+                pcl::PointCloud<TXGPointCloudType>& inlier_radar,
                 const Matrix3& C_stab_r = Matrix3::Identity());
 
 private:
@@ -100,6 +112,7 @@ private:
    * @param[out] inlier_idx_best    idices of inlier
    * @returns true if estimation successful
    */
+  // api: LSQ配合RANSAC求解
   bool solve3DLsqRansac(const Matrix& radar_data, Vector3& v_r, Matrix3& P_v_r, std::vector<uint>& inlier_idx_best);
 
   /**
@@ -112,12 +125,14 @@ private:
    * @param estimate_sigma          if true sigma will be estimated as well
    * @returns true if estimation successful
    */
+  // api: LSQ求解
   bool solve3DLsq(const Matrix& radar_data, Vector3& v_r, Matrix3& P_v_r, bool estimate_sigma = true);
 
   bool solve3DOdr(const Matrix& radar_data, Vector3& v_r, Matrix3& P_v_r);
   /**
    * @brief Helper function which estiamtes the number of RANSAC iterations
    */
+  // api: RANSAC迭代次数计算
   void setRansacIter()
   {
     ransac_iter_ = uint((std::log(1.0 - config_.success_prob)) /
@@ -165,11 +180,11 @@ bool RadarEgoVelocityEstimator::configure(ConfigContainingRadarEgoVelocityEstima
   config_.N_ransac_points = config.N_ransac_points;
   config_.inlier_thresh   = config.inlier_thresh;
 
-  config_.use_odr   = config.use_odr;
-  config_.sigma_v_d = config.sigma_v_d;
-  config_.min_speed_odr = config.min_speed_odr;
+  config_.use_odr                = config.use_odr;
+  config_.sigma_v_d              = config.sigma_v_d;
+  config_.min_speed_odr          = config.min_speed_odr;
   config_.model_noise_offset_deg = config.model_noise_offset_deg;
-  config_.model_noise_scale_deg = config.model_noise_scale_deg;
+  config_.model_noise_scale_deg  = config.model_noise_scale_deg;
 
   setRansacIter();
 

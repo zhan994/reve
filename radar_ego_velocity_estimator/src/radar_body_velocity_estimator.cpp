@@ -28,6 +28,7 @@ RadarBodyVelocityEstimator::RadarBodyVelocityEstimator(ros::NodeHandle nh, const
 {
   bool success = true;
 
+  // step: 1 外参 T_b_r_
   Vector3 l_b_r;
   success &= getRosParameter(nh, kPrefix, RosParameterType::Required, "l_b_r_x", l_b_r.x());
   success &= getRosParameter(nh, kPrefix, RosParameterType::Required, "l_b_r_y", l_b_r.y());
@@ -39,6 +40,8 @@ RadarBodyVelocityEstimator::RadarBodyVelocityEstimator(ros::NodeHandle nh, const
   success &= getRosParameter(nh, kPrefix, RosParameterType::Required, "q_b_r_y", q_b_r.y());
   success &= getRosParameter(nh, kPrefix, RosParameterType::Required, "q_b_r_z", q_b_r.z());
 
+  // step: 2 不使用dyna config
+  // note: 本程序使用dyna config配置参数
   if (load_param_without_reconfigure)
   {
     // clang-format off
@@ -80,6 +83,7 @@ RadarBodyVelocityEstimator::RadarBodyVelocityEstimator(ros::NodeHandle nh, const
 
   assert(success && "Failed to load all rosparameters --> check error message above");
 
+  // step: 3 构建外参齐次矩阵
   T_b_r_.translation() = l_b_r;
   T_b_r_.linear()      = Matrix3(q_b_r);
 }
@@ -92,9 +96,11 @@ bool RadarBodyVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_
   Vector3 v_r;
   Matrix3 P_v_r;
 
+  // step: 1 reve估计雷达ego vel
   if (radar_ego_velocity_estimator_.estimate(radar_scan_msg, v_r, P_v_r))
   {
     // v_b & sigma_v_b
+    // step: 2 补偿本体角速度，将雷达ego velz转为本体 vel
     const Vector3 v_b_w = math_helper::skewVec(w_b) * T_b_r_.translation();
     v_b_r               = T_b_r_.linear() * v_r - v_b_w;
     P_v_b               = T_b_r_.linear() * P_v_r * T_b_r_.linear().transpose();

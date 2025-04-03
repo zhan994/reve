@@ -34,6 +34,7 @@ namespace reve
 /**
  * @brief The RadarBodyVelocityEstimatorRos class provides a ROS interface for the RadarBodyVelocityEstimator
  */
+// api: rbve ros
 class RadarBodyVelocityEstimatorRos
 {
 public:
@@ -47,6 +48,7 @@ public:
 
   /**
    * @brief Pocesses a whole rosbag
+   * // api: 处理完整的bag包
    * @note Use sleep_ms to limit the processing speed
    * @param rosbag_path    full path to the rosbag
    * @param bag_start      start time for processing (skip the first bag_start seconds)
@@ -57,9 +59,11 @@ public:
                      const double bag_start,
                      const double bag_duration,
                      const double sleep_ms);
+
   /**
    * @brief Recofigure callback
    */
+  // api: reconfig 回调，用于配置 estimator_ 参数
   void reconfigureCallback(radar_ego_velocity_estimation::RadarEgoVelocityEstimatorConfig& config, uint32_t level)
   {
     estimator_.configure(config);
@@ -67,6 +71,7 @@ public:
 
   /**
    * @brief Does the acutal processing using the RadarBodeyVelocityEstimator class
+   * // api: 处理RADAR数据
    * @param radar_scan     radar scan message
    * @param w_b            omega velocity observed during the radar scan
    * @param trigger_stamp  trigger time stamp of radar scan used to stamp the estimated velocity
@@ -75,16 +80,19 @@ public:
 
   /**
    * @brief Imu message callback, called by ros::spin (ros mode) or runFromRosbag
+   * // api: IMU数据回调，处理角速度
    */
   void callbackImu(const sensor_msgs::ImuConstPtr& imu_msg);
 
   /**
    * @brief Radar scan message callback, alled by ros::spin (ros mode) or runFromRosbag
+   * // api: RADAR数据回调
    */
   void callbackRadarScan(const sensor_msgs::PointCloud2ConstPtr& radar_scan_msg);
 
   /**
    * @brief Radar trigger header message callback, called by ros::spin (ros mode) or runFromRosbag
+   * // api: Trigger数据回调
    */
   void callbackRadarTrigger(const std_msgs::HeaderConstPtr& trigger_msg);
 
@@ -93,15 +101,18 @@ private:
 
   dynamic_reconfigure::Server<radar_ego_velocity_estimation::RadarEgoVelocityEstimatorConfig> reconfigure_server_;
 
-  RadarBodyVelocityEstimator estimator_;
-  Isometry T_b_r_;
+  RadarBodyVelocityEstimator estimator_;  // rbve估计器
+  Isometry T_b_r_;                        // 外参
 
+  // 运行耗时统计
   SimpleProfiler profiler;
 
+  // sub
   ros::Subscriber sub_imu_;
   ros::Subscriber sub_radar_scan_;
   ros::Subscriber sub_radar_trigger_;
 
+  // pub
   ros::Publisher pub_twist_body_;
   ros::Publisher pub_twist_ground_truth_;
 

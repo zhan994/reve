@@ -37,6 +37,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(RadarPointCloudType,
                                   )
 // clang-format on
 
+// api: Vector11转雷达点
 static RadarPointCloudType toRadarPointCloudType(const Vector11& item, const RadarEgoVelocityEstimatorIndices& idx)
 {
   RadarPointCloudType point;
@@ -49,14 +50,30 @@ static RadarPointCloudType toRadarPointCloudType(const Vector11& item, const Rad
   return point;
 }
 
+static TXGPointCloudType toTXGPointCloudType(const Vector11& item, const RadarEgoVelocityEstimatorIndices& idx)
+{
+  TXGPointCloudType point;
+  point.x        = item[idx.x_r];
+  point.y        = item[idx.y_r];
+  point.z        = item[idx.z_r];
+  point.normal_x = -item[idx.v_d];
+  point.normal_y = item[idx.noise_db];
+  point.normal_z = item[idx.peak_db];
+
+  return point;
+}
+
 bool RadarEgoVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_scan_msg,
                                          Vector3& v_r,
                                          Vector3& sigma_v_r)
 {
+  // step: 1 调用封装ROS消息的reve接口
   Matrix3 P_v_r;
   sensor_msgs::PointCloud2 inlier_radar_msg;
   const auto success = estimate(radar_scan_msg, v_r, P_v_r, inlier_radar_msg);
-  sigma_v_r          = Vector3(P_v_r(0, 0), P_v_r(1, 1), P_v_r(2, 2)).array().sqrt();
+
+  // step: 2 转换协方差矩阵为向量
+  sigma_v_r = Vector3(P_v_r(0, 0), P_v_r(1, 1), P_v_r(2, 2)).array().sqrt();
   return success;
 }
 
@@ -65,10 +82,12 @@ bool RadarEgoVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_s
                                          Vector3& sigma_v_r,
                                          sensor_msgs::PointCloud2& inlier_radar_msg)
 {
+  // step: 1 调用reve核心接口
   Matrix3 P_v_r;
   pcl::PointCloud<RadarPointCloudType> radar_scan_inlier;
   bool success = estimate(radar_scan_msg, v_r, P_v_r, radar_scan_inlier);
 
+  // step: 2 转为ROS消息格式，并将协方差矩阵转为向量
   pclToPcl2msg(radar_scan_inlier, inlier_radar_msg);
   inlier_radar_msg.header = radar_scan_msg.header;
   sigma_v_r               = Vector3(P_v_r(0, 0), P_v_r(1, 1), P_v_r(2, 2)).array().sqrt();
@@ -78,6 +97,7 @@ bool RadarEgoVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_s
 
 bool RadarEgoVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_scan_msg, Vector3& v_r, Matrix3& P_v_r)
 {
+  std::cout << "reve,,," << std::endl;
   sensor_msgs::PointCloud2 inlier_radar_msg;
   return estimate(radar_scan_msg, v_r, P_v_r, inlier_radar_msg);
 }
@@ -87,9 +107,13 @@ bool RadarEgoVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_s
                                          Matrix3& P_v_r,
                                          sensor_msgs::PointCloud2& inlier_radar_msg)
 {
-  pcl::PointCloud<RadarPointCloudType> radar_scan_inlier;
+  // step: 1 调用reve核心接口
+  // note: 调试TXGPointCloudType暂时注释RadarPointCloudType
+  // pcl::PointCloud<RadarPointCloudType> radar_scan_inlier;
+  pcl::PointCloud<TXGPointCloudType> radar_scan_inlier;
   bool success = estimate(radar_scan_msg, v_r, P_v_r, radar_scan_inlier);
 
+  // step: 2 转为ROS消息格式
   pclToPcl2msg(radar_scan_inlier, inlier_radar_msg);
   inlier_radar_msg.header = radar_scan_msg.header;
 
@@ -102,21 +126,23 @@ bool RadarEgoVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_s
                                          pcl::PointCloud<RadarPointCloudType>& radar_scan_inlier,
                                          const Matrix3& C_stab_r)
 {
+  // step: 1 重置相关数据
   auto radar_scan(new pcl::PointCloud<RadarPointCloudType>);
-
   bool success = false;
 
   if (pcl2msgToPcl(radar_scan_msg, *radar_scan))
   {
+    // step: 2 筛选合理目标点
     std::vector<Vector11> valid_targets;
     for (uint i = 0; i < radar_scan->size(); ++i)
     {
+      // step: 2.1 计算range、azimuth和elevation
       const auto target = radar_scan->at(i);
       const Real r      = Vector3(target.x, target.y, target.z).norm();
+      Real azimuth      = std::atan2(target.y, target.x) - M_PI_2;
+      Real elevation    = std::atan2(std::sqrt(target.x * target.x + target.y * target.y), target.z) - M_PI_2;
 
-      Real azimuth   = std::atan2(target.y, target.x) - M_PI_2;
-      Real elevation = std::atan2(std::sqrt(target.x * target.x + target.y * target.y), target.z) - M_PI_2;
-
+      // step: 2.2 根据阈值过滤，默认 0.25 < r < 100，snr_db > 5，|azimuth| < 60，|elevation| < 60
       if (r > config_.min_dist && r < config_.max_dist && target.snr_db > config_.min_db &&
           std::fabs(azimuth) < angles::from_degrees(config_.azimuth_thresh_deg) &&
           std::fabs(elevation) < angles::from_degrees(config_.elevation_thresh_deg))
@@ -124,6 +150,7 @@ bool RadarEgoVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_s
         const Vector3 p_stab = C_stab_r * Vector3(target.x, target.y, target.z);
 
         // TODO make parameter
+        // step: -100 < z < 100
         if (p_stab.z() > config_.filter_min_z && p_stab.z() < config_.filter_max_z)
         {
           Vector11 v;
@@ -137,12 +164,14 @@ bool RadarEgoVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_s
     if (valid_targets.size() > 2)
     {
       // check for zero velocity
+      // step: 1 计算速度近0的点是否较多
       std::vector<Real> v_dopplers;
       for (const auto& v : valid_targets) v_dopplers.emplace_back(std::fabs(v[idx_.v_d]));
       const size_t n = v_dopplers.size() * (1.0 - config_.allowed_outlier_percentage);
       std::nth_element(v_dopplers.begin(), v_dopplers.begin() + n, v_dopplers.end());
-      const auto median = v_dopplers[n];
 
+      // step: 2 较多零速数据，则不进行LSQ计算，默认雷达静止
+      const auto median = v_dopplers[n];
       if (median < config_.thresh_zero_velocity)
       {
         ROS_INFO_STREAM_THROTTLE(0.5, kPrefix << "Zero velocity detected!");
@@ -163,19 +192,25 @@ bool RadarEgoVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_s
       else
       {
         // LSQ velocity estimation
+        // step: 3 动态点进行LSQ估计
+        // step: 3.1 统计估计需要的数据，归一化坐标系
         Matrix radar_data(valid_targets.size(), 4);  // rx, ry, rz, v
         uint idx = 0;
         for (const auto& v : valid_targets)
           radar_data.row(idx++) = Vector4(v[idx_.r_x], v[idx_.r_y], v[idx_.r_z], v[idx_.v_d]);
 
+        // step: 3.2 估计器主要部分
         if (config_.use_ransac)
         {
+          // step: RANSAC LSQ估计
           std::vector<uint> inlier_idx_best;
           success = solve3DLsqRansac(radar_data, v_r, P_v_r, inlier_idx_best);
 
+          // step: inlier
           for (const auto& idx : inlier_idx_best)
             radar_scan_inlier.push_back(toRadarPointCloudType(valid_targets.at(idx), idx_));
 
+          // step: Odr优化
           if (success && config_.use_odr && v_r.norm() > config_.min_speed_odr && inlier_idx_best.size() > 10)
           {
             Matrix radar_data_inlier(inlier_idx_best.size(), 4);
@@ -187,9 +222,135 @@ bool RadarEgoVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_s
         }
         else
         {
+          // step: 所有目标都为inlier
           for (const auto& item : valid_targets) radar_scan_inlier.push_back(toRadarPointCloudType(item, idx_));
 
+          // step: LSQ估计
           success = solve3DLsq(radar_data, v_r, P_v_r);
+
+          // step: Odr优化
+          if (success && config_.use_odr)
+          {
+            success = solve3DOdr(radar_data, v_r, P_v_r);
+          }
+        }
+      }
+    }
+  }
+
+  return success;
+}
+
+bool RadarEgoVelocityEstimator::estimate(const sensor_msgs::PointCloud2& radar_scan_msg,
+                                         Vector3& v_r,
+                                         Matrix3& P_v_r,
+                                         pcl::PointCloud<TXGPointCloudType>& radar_scan_inlier,
+                                         const Matrix3& C_stab_r)
+{
+  // step: 1 重置相关数据
+  auto radar_scan(new pcl::PointCloud<TXGPointCloudType>);
+  bool success = false;
+
+  if (pcl2msgToPcl(radar_scan_msg, *radar_scan))
+  {
+    // step: 2 筛选合理目标点
+    std::vector<Vector11> valid_targets;
+    for (uint i = 0; i < radar_scan->size(); ++i)
+    {
+      // step: 2.1 计算range、azimuth和elevation
+      const auto target = radar_scan->at(i);
+      const Real r      = Vector3(target.x, target.y, target.z).norm();
+      Real azimuth      = std::atan2(target.y, target.x);
+      Real elevation    = std::atan2(std::sqrt(target.x * target.x + target.y * target.y), target.z);
+
+      // step: 2.2 根据阈值过滤，默认 0.25 < r < 100，snr_db > 5
+      if (r > config_.min_dist && r < config_.max_dist && target.normal_z > config_.min_db)
+      {
+        const Vector3 p_stab = C_stab_r * Vector3(target.x, target.y, target.z);
+
+        // TODO make parameter
+        // step: -100 < z < 100
+        // std::cout << "p_stab z: " << p_stab.z() << std::endl;
+        if (p_stab.z() > config_.filter_min_z && p_stab.z() < config_.filter_max_z)
+        {
+          Vector11 v;
+          v << azimuth, elevation, target.x, target.y, target.z, target.normal_z, target.x / r, target.y / r,
+              target.z / r, -target.normal_x * config_.doppler_velocity_correction_factor, target.normal_y;
+          valid_targets.emplace_back(v);
+        }
+      }
+    }
+
+    std::cout << "ori. size: " << radar_scan->size() << std::endl;
+    if (valid_targets.size() > 2)
+    {
+      std::cout << "valid targets size: " << valid_targets.size() << std::endl;
+      // check for zero velocity
+      // step: 1 计算速度近0的点是否较多
+      std::vector<Real> v_dopplers;
+      for (const auto& v : valid_targets) v_dopplers.emplace_back(std::fabs(v[idx_.v_d]));
+      const size_t n = v_dopplers.size() * (1.0 - config_.allowed_outlier_percentage);
+      std::nth_element(v_dopplers.begin(), v_dopplers.begin() + n, v_dopplers.end());
+
+      // step: 2 较多零速数据，则不进行LSQ计算，默认雷达静止
+      const auto median = v_dopplers[n];
+      if (median < config_.thresh_zero_velocity)
+      {
+        ROS_INFO_STREAM_THROTTLE(0.5, kPrefix << "Zero velocity detected!");
+
+        v_r = Vector3(0, 0, 0);
+        P_v_r.setIdentity();
+        P_v_r.diagonal() =
+            Vector3(config_.sigma_zero_velocity_x, config_.sigma_zero_velocity_y, config_.sigma_zero_velocity_z)
+                .array()
+                .square();
+
+        for (const auto& item : valid_targets)
+          if (std::fabs(item[idx_.v_d]) < config_.thresh_zero_velocity)
+            radar_scan_inlier.push_back(toTXGPointCloudType(item, idx_));
+
+        success = true;
+      }
+      else
+      {
+        // LSQ velocity estimation
+        // step: 3 动态点进行LSQ估计
+        // step: 3.1 统计估计需要的数据，归一化坐标系
+        Matrix radar_data(valid_targets.size(), 4);  // rx, ry, rz, v
+        uint idx = 0;
+        for (const auto& v : valid_targets)
+          radar_data.row(idx++) = Vector4(v[idx_.r_x], v[idx_.r_y], v[idx_.r_z], v[idx_.v_d]);
+
+        // step: 3.2 估计器主要部分
+        if (config_.use_ransac)
+        {
+          // step: RANSAC LSQ估计
+          std::vector<uint> inlier_idx_best;
+          success = solve3DLsqRansac(radar_data, v_r, P_v_r, inlier_idx_best);
+
+          // // step: inlier
+          for (const auto& idx : inlier_idx_best)
+            radar_scan_inlier.push_back(toTXGPointCloudType(valid_targets.at(idx), idx_));
+
+          // step: Odr优化
+          if (success && config_.use_odr && v_r.norm() > config_.min_speed_odr && inlier_idx_best.size() > 10)
+          {
+            Matrix radar_data_inlier(inlier_idx_best.size(), 4);
+            for (uint i = 0; i < inlier_idx_best.size(); ++i)
+              radar_data_inlier.row(i) = radar_data.row(inlier_idx_best.at(i));
+
+            success = solve3DOdr(radar_data_inlier, v_r, P_v_r);
+          }
+        }
+        else
+        {
+          // step: 所有目标都为inlier
+          for (const auto& item : valid_targets) radar_scan_inlier.push_back(toTXGPointCloudType(item, idx_));
+
+          // step: LSQ估计
+          success = solve3DLsq(radar_data, v_r, P_v_r);
+
+          // step: Odr优化
           if (success && config_.use_odr)
           {
             success = solve3DOdr(radar_data, v_r, P_v_r);
@@ -243,6 +404,7 @@ bool RadarEgoVelocityEstimator::solve3DLsqRansac(const Matrix& radar_data,
 
   if (!inlier_idx_best.empty())
   {
+    std::cout << "solve by inliers: " << inlier_idx_best.size() << std::endl;
     Matrix radar_data_inlier(inlier_idx_best.size(), 4);
     for (uint i = 0; i < inlier_idx_best.size(); ++i) radar_data_inlier.row(i) = radar_data.row(inlier_idx_best.at(i));
 
@@ -254,6 +416,7 @@ bool RadarEgoVelocityEstimator::solve3DLsqRansac(const Matrix& radar_data,
 
 bool RadarEgoVelocityEstimator::solve3DLsq(const Matrix& radar_data, Vector3& v_r, Matrix3& P_v_r, bool estimate_sigma)
 {
+  // note: 求解 H x = y 中的 x
   Matrix H(radar_data.rows(), 3);
   H.col(0)         = radar_data.col(0);
   H.col(1)         = radar_data.col(1);
@@ -262,19 +425,26 @@ bool RadarEgoVelocityEstimator::solve3DLsq(const Matrix& radar_data, Vector3& v_
 
   const Vector y = radar_data.col(3);
 
+  // step: 1 计算矩阵H的条件数，判断是否奇异或病态的
   Eigen::JacobiSVD<Matrix> svd(HTH);
   Real cond = svd.singularValues()(0) / svd.singularValues()(svd.singularValues().size() - 1);
 
-  if (std::fabs(cond) < 1.0e3)
+  // step: 2 矩阵稳定则进行LSQ求解
+  // if (std::fabs(cond) < 1.0e3)
+  if (1)
   {
+    // step: 2.1 cholesky 或 svd
     if (config_.use_cholesky_instead_of_bdcsvd)
       v_r = (HTH).ldlt().solve(H.transpose() * y);
     else
       v_r = H.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(y);
 
+    // step: 2.2 估计方差
     if (estimate_sigma)
     {
-      const Vector e    = H * v_r - y;
+      const Vector e = H * v_r - y;
+
+      // note: P=sigma^2(H^T H)^{−1}, sigma^2=(e^Te)/(n-m), n为观测数, m为估计参数个数
       P_v_r             = (e.transpose() * e).x() * (HTH).inverse() / (H.rows() - 3);
       Vector3 sigma_v_r = Vector3(P_v_r(0, 0), P_v_r(1, 1), P_v_r(2, 2));
 
@@ -284,10 +454,12 @@ bool RadarEgoVelocityEstimator::solve3DLsq(const Matrix& radar_data, Vector3& v_
               .square();
       P_v_r += offset.asDiagonal();
 
+      std::cout << "sigma vector: " << sigma_v_r.transpose() << std::endl;
       // check diagonal for valid estimation result
       if (sigma_v_r.x() >= 0.0 && sigma_v_r.y() >= 0.0 && sigma_v_r.z() >= 0.)
       {
         sigma_v_r = sigma_v_r.array().sqrt();
+        std::cout << "sigma vector sqrt: " << sigma_v_r.transpose() << std::endl;
         if (sigma_v_r.x() < config_.max_sigma_x && sigma_v_r.y() < config_.max_sigma_y &&
             sigma_v_r.z() < config_.max_sigma_z)
           return true;
@@ -302,6 +474,7 @@ bool RadarEgoVelocityEstimator::solve3DLsq(const Matrix& radar_data, Vector3& v_
   return false;
 }
 
+// todo: 目前暂不分析
 bool RadarEgoVelocityEstimator::solve3DOdr(const Matrix& radar_data, Vector3& v_r, Matrix3& P_v_r)
 {
   const auto n = radar_data.rows();

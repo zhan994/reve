@@ -26,6 +26,7 @@ namespace math_helper
 /**
  * @brief Calculates the skew matrix from a 3D vector
  */
+// api: 反对称
 static Matrix3 skewVec(const Vector3& v)
 {
   Matrix3 S;

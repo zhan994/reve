@@ -25,6 +25,7 @@
 
 namespace reve
 {
+// api: 雷达数据点类型的定义
 struct RadarPointCloudType
 {
   PCL_ADD_POINT4D;      // position in [m]
@@ -50,8 +51,34 @@ struct mmWaveCloudType
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
-bool pcl2msgToPcl(const sensor_msgs::PointCloud2& pcl_msg, pcl::PointCloud<RadarPointCloudType>& scan);
+struct Radar4DPointType
+{
+  PCL_ADD_POINT4D;      // position in [m]
+  float v_doppler_mps;  // Doppler velocity in [m/s]
+  float snr_db;         // CFAR cell to side noise ratio in [dB]
+  float rcs;            // RCS
+  float range;          // range in [m]
+  float azimuth;        // azimuth in [degree]
+  float elevation;      // elevation in [degree]
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
 
+// PointType pt;
+// pt.x         = xyz.x();
+// pt.y         = xyz.y();
+// pt.z         = xyz.z();
+// pt.normal_x  = ob->vel;
+// pt.normal_y  = ob->rcs;
+// pt.normal_z  = ob->snr;
+// pt.intensity = ob->exist_confidence;
+// pt.curvature = ob->flags;
+typedef pcl::PointXYZINormal TXGPointCloudType;
+
+// api: PCL与PCL2的ROS消息的互转
+bool pcl2msgToPcl(const sensor_msgs::PointCloud2& pcl_msg, pcl::PointCloud<RadarPointCloudType>& scan);
 bool pclToPcl2msg(pcl::PointCloud<RadarPointCloudType> scan, sensor_msgs::PointCloud2& pcl_msg);
+
+bool pcl2msgToPcl(const sensor_msgs::PointCloud2& pcl_msg, pcl::PointCloud<TXGPointCloudType>& scan);
+bool pclToPcl2msg(pcl::PointCloud<TXGPointCloudType> scan, sensor_msgs::PointCloud2& pcl_msg);
 
 }  // namespace reve

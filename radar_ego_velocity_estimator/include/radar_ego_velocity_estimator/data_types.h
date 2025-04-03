@@ -62,11 +62,7 @@ struct ImuDataStamped
                  const double dt,
                  const Vector3& a_b_ib,
                  const Vector3& w_b_ib) :
-    time_stamp{time_stamp},
-    frame_id{frame_id},
-    dt{dt},
-    a_b_ib{a_b_ib},
-    w_b_ib{w_b_ib}
+    time_stamp{time_stamp}, frame_id{frame_id}, dt{dt}, a_b_ib{a_b_ib}, w_b_ib{w_b_ib}
   {
   }
 

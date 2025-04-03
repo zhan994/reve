@@ -20,6 +20,7 @@
 
 using namespace reve;
 
+// 节点前缀
 const std::string kNodeName = "radar_body_velocity_estimator";
 const std::string kPrefix   = "[" + kNodeName + "]: ";
 
